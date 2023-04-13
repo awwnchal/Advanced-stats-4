@@ -1,0 +1,462 @@
+---
+title: "Advance Stats - HW4"
+author: "Anchal | Anant | Nitesh"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(cli)
+library(tidyr)
+
+install.packages('magick')
+```
+
+# QUESTION 2
+
+### Part 1
+
+```{r}
+# downloading the image
+image <- readJPEG("tiger.jpeg")
+
+# display image 
+plot(1, type="n") 
+rasterImage(image, 0.6, 0.6, 1.4, 1.4)
+
+# display the dimensions of the tiger image
+dim(image)
+
+
+# storing each component of the image in 3 basic colours in 3 separate variables
+red_channel <- image[,,1]
+green_channel <- image[,,2]
+blue_channel <- image[,,3]
+
+```
+
+### Part 2
+
+```{r}
+
+# applying PCA on each of the components
+pca_red <- prcomp(red_channel, center = FALSE, scale.=FALSE)
+pca_green <- prcomp(green_channel, center = FALSE, scale.=FALSE)
+pca_blue <- prcomp(blue_channel, center = FALSE, scale.=FALSE)
+
+```
+
+
+```{r}
+
+f11 <- fviz_eig(pca_red, main = "Red", barfill = "red", ncp = 10, addlabels = TRUE)
+f22 <- fviz_eig(pca_green, main = "Green", barfill = "green", ncp = 10, addlabels = TRUE)
+f33 <- fviz_eig(pca_blue, main = "Blue", barfill = "blue", ncp = 10, addlabels = TRUE)
+grid.arrange(f11, f22, f33, ncol = 3) 
+
+```
+
+INTERPRETATION: From the above scree plot for each colour component, we observe that the first PCA contributes to the majority of the variances. The remaining components explain much lesser variation.
+
+### Part 3
+
+```{r}
+# calculating variance for each component
+variance_red <- pca_red$sdev^2
+variance_green <- pca_green$sdev^2
+variance_blue <- pca_blue$sdev^2
+
+
+#total variance
+total_var <- sum(variance_red) + sum(variance_green) + sum(variance_blue)
+
+# defining a new vector to store the variances for increase in k
+fraction_of_variance <- c()
+
+
+# loop to calculate the total variance from each component on increasing value of k
+for(k in 1:length(variance_red)){
+  fraction_of_variance[k] <- sum(variance_red[1:k]) + sum(variance_green[1:k]) + sum(variance_blue[1:k])
+}
+
+# dividing the above to get the fraction of variation being explained at each k
+fraction <- fraction_of_variance/total_var
+
+# plotting the above
+plot(1:length(fraction_of_variance),fraction, type="b", main= "Fraction of Variation on increasing k " ,xlab="Number of Principal Components", ylab="Fraction of Variance")
+grid()
+
+```
+
+```{r}
+
+# fraction of variation explained by each colour
+
+plot(1:length(pca_red$sdev), cumsum(pca_red$sdev^2) / sum(pca_red$sdev^2), 
+     type = "b", col = "red", xlab = "Number of Principal Components",
+     ylab = "Fraction of Variance", main = "Fraction of Variance vs Number of Principal Components for Red component")
+
+plot(1:length(pca_green$sdev), cumsum(pca_green$sdev^2) / sum(pca_green$sdev^2), 
+     type = "b", col = "green", xlab = "Number of Principal Components",
+     ylab = "Fraction of Variance", main = "Fraction of Variance vs Number of Principal Components for Green component")
+
+plot(1:length(pca_blue$sdev), cumsum(pca_blue$sdev^2) / sum(pca_blue$sdev^2), 
+     type = "b", col = "blue", xlab = "Number of Principal Components",
+     ylab = "Fraction of Variance", main = "Fraction of Variance vs Number of Principal Components for Blue component")
+
+
+plot(1:length(pca_red$sdev), cumsum(pca_red$sdev^2) / sum(pca_red$sdev^2), 
+     type = "b", col = "red", xlab = "Number of Principal Components",
+     ylab = "Fraction of Variance", main = "Fraction of Variance vs Number of Principal Components")
+lines(1:length(pca_green$sdev), cumsum(pca_green$sdev^2) / sum(pca_green$sdev^2), 
+      type = "b", col = "green")
+lines(1:length(pca_blue$sdev), cumsum(pca_blue$sdev^2) / sum(pca_blue$sdev^2), 
+      type = "b", col = "blue")
+legend("bottomright", c("Red Channel", "Green Channel", "Blue Channel"), 
+       col = c("red", "green", "blue"), lty = 1)
+
+```
+
+INTERPRETATION: From the above variation plot (all the components combined and the individual component plot) we see that most of the variation (95%) is explained by the first few components itself.
+
+
+### Part 4
+
+```{r}
+
+# choosing the k values
+k_values <- c(3, 5, 10, 25, 50, 100, 150, 200, 250, 300, 350, length(variance_red))
+compression_ratio_vec <- c()
+new_image_size_vec <- c()
+
+for (k in k_values) {
+  
+  # Constructing the compressed color matrices
+
+  red_compressed <- pca_red$x[,1:k] %*% t(pca_red$rotation[,1:k])
+  green_compressed <- pca_green$x[,1:k] %*% t(pca_green$rotation[,1:k])
+  blue_compressed <- pca_blue$x[,1:k] %*% t(pca_blue$rotation[,1:k])
+  
+  # Combine the compressed color matrices into a single image
+  compressed_image <- array(0, dim = dim(image))
+  compressed_image[, , 1] <- red_compressed
+  compressed_image[, , 2] <- green_compressed
+  compressed_image[, , 3] <- blue_compressed
+  
+  
+  # Saving the constructed image from the above PCA's and saving the images in the same folder
+  writeJPEG(compressed_image, target = paste0("compressed_", k, ".jpeg"))
+  
+  # Calculating the compression ratio
+  original_size <- file.info("tiger.jpeg")$size
+  new_size <- file.info(paste0("compressed_", k, ".jpeg"))$size
+  new_image_size_vec <- c(new_image_size_vec, new_size)
+  compression_ratio = (new_size) / (original_size)
+  compression_ratio_vec <- c(compression_ratio_vec, compression_ratio)
+  print(paste("Compression ratio for k =", k, "is", round(compression_ratio, 2)))
+  
+}
+
+```
+
+
+```{r}
+
+# Display the compressed image for each k
+
+for (k in k_values) {
+  image <- image_read(paste0("compressed_", k, ".jpeg"))
+  plot(image, main = paste("Compressed Image for k =", k))
+  title(main = paste("Compressed Image for k =", k))
+}
+
+```
+
+
+```{r}
+
+# plotting the compression ratio for each k tested above
+
+plot(k_values, compression_ratio_vec, type="b", main = "Change is compression ratio with increasing value of k " , xlab="Number of Principal Components", ylab="Compression Ratio", ylim=c(0.0, 1.1),col="red")
+text(k_values, compression_ratio_vec, labels = round(compression_ratio_vec, 2), pos = 3)
+
+```
+
+INTERPRETATION: From the above plot, we can see that with increasing number of components, the Compression ratio steadily increases. For 802 components, our compression ratio is 0.43 however this ideally should be 1 according to me. But i do observe that for the compressed images, the resolution or also "dpi" has dropped from 150 (original image resolution) to 96(compressed image resolution. This could be the reason for us not getting the compression ratio 1 when all components are considered.
+
+
+
+
+# QUESTION 3
+
+## 3.1
+
+```{r}
+# library
+library(ISLR2)
+library(MVA)
+library(pls)
+library(psych)
+library(glmnet)
+library(dplyr)
+```
+
+```{r}
+
+data(Boston)
+
+# standardizing all variables
+Boston.scaled <- as.data.frame(scale(Boston))
+apply(Boston.scaled, 2, mean)
+apply(Boston.scaled, 2, sd)
+
+# partition the data into two parts
+set.seed(123)
+trainIndex <- sample(1:nrow(Boston.scaled), 0.8*nrow(Boston.scaled))
+b_train <- Boston[trainIndex, ]
+b_test <- Boston[-trainIndex, ]
+
+rmse <- function(y_pred,y_actual) sqrt(mean((y_pred-y_actual)^2))
+
+```
+
+## 3.2
+
+```{r}
+##### PCR
+### 0. Standardize the data before applying PCR.
+### 1. Find the principal components of data.
+### 2. Choose n principal components which explains the majority of the
+##variation 
+### 3. Run the multiple linear regression of y with the n principle components
+
+### Principal components
+# principal component (except for the 1st variable, crim)
+bostonpca <- prcomp(b_train[, -1], center = TRUE, scale = TRUE)
+
+# information output 
+names(bostonpca)
+
+# the standard deviations of the principal components 
+# (or the square roots of the eigenvalues of the covariance matrix)
+round(bostonpca$sdev, 3)
+summary(bostonpca)
+
+# eigenvectors (the linear combinations of the predictors that generate the PCs)
+bostonpca$rot[,1]
+
+### cross validation for PCR
+# Find the num of components
+b_model_pcr <- pcr(crim ~ ., data = b_train, center = TRUE, scale = TRUE,
+                   validation = "CV")
+summary(b_model_pcr)
+b_myrmse_pcr <- RMSEP(b_model_pcr)$val[1,,]
+which.min(b_myrmse_pcr)
+
+# RMSE in the testing sample 
+
+b_pcr_pred <- predict(b_model_pcr, b_test, ncomp = b_model_pcr$ncomp)
+rmse_pcr <- rmse(b_pcr_pred, b_test$crim)
+rmse_pcr
+```
+
+## 3.3
+
+```{r}
+##### Partial least squares regression
+### PLS uses the response variable to determine the set of features that are a 
+### linear combination of X 
+### and then runs a regression on these new feature vectors.
+
+# Cross validation for PLS
+b_model_pls <- plsr(crim ~ ., data = b_train, center = TRUE, scale = TRUE, 
+                    validation="CV")
+summary(b_model_pls)
+validationplot(b_model_pls, val.type = "RMSEP")
+b_myrmse_pls <- RMSEP(b_model_pls)$val[1,,]
+which.min(b_myrmse_pls)
+
+# RMSE in the testing sample 
+b_pls_pred <- predict(b_model_pls, b_test, ncomp = 10)
+rmse_pls <- rmse(b_pls_pred, b_test$crim)
+rmse_pls
+```
+
+## 3.4
+
+Ridge Regression
+
+```{r}
+# Define the response and predictor variables
+y <- b_train$crim
+x <- as.matrix(select(b_train, -crim))
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Perform cross-validation to obtain lambda_min and lambda_1se
+# aplha = 0 for ridge
+cv_results <- cv.glmnet(x, y, alpha = 0)
+
+# Between lambda min and lambda 1se, choosing Lambda 1se because it is a good
+###compromise between model complexity and goodness of fit and is often
+###considered a good choice for the final model.
+
+# for lambda 1se
+# value of lambda 1se
+lambda_1se <- cv_results$lambda.1se
+lambda_1se
+# beta coefficients included in the model
+coeff_lambda_1se <- cv_results$glmnet.fit$beta[,18]
+# Fit the ridge model using lambda_1se
+model_lambda_1se <- glmnet(x, y, alpha = 0, lambda = lambda_1se)
+model_lambda_1se
+
+# predict and calculate OOS R^2
+x_test <- as.matrix(select(b_test, -crim))
+predictions_lambda_1se <- predict(model_lambda_1se, x_test)
+y_test <- b_test$crim
+
+rmse_ridge <- rmse(predictions_lambda_1se, b_test$crim)
+rmse_ridge
+```
+## 3.5
+
+Lasso Regression
+
+```{r}
+# Set seed for reproducibility
+set.seed(123)
+
+# Perform cross-validation to obtain lambda_min and lambda_1se
+# aplha = 1 for lasso
+cv_results <- cv.glmnet(x, y, alpha = 1)
+
+# Between lambda min and lambda 1se, choosing Lambda 1se because it is a good
+# compromise between model complexity and goodness of fit and is often considered a good choice for the final model.
+
+# for lambda 1se
+# value of lambda 1se
+lambda_1se <- cv_results$lambda.1se
+lambda_1se
+# beta coefficients included in the model
+coeff_lambda_1se <- cv_results$glmnet.fit$beta[,18]
+# non zero beta coefficients = 4
+coeff_lambda_1se[coeff_lambda_1se!=0]
+
+count_non_zero_coeff = length(coeff_lambda_1se[coeff_lambda_1se!=0])
+
+# Fit the ridge model using lambda_1se
+model_lambda_1se <- glmnet(x, y, alpha = 1, lambda = lambda_1se)
+model_lambda_1se
+
+# predict and calculate OOS R^2 
+predictions_lambda_1se <- predict(model_lambda_1se, x_test)
+
+rmse_lasso <- rmse(predictions_lambda_1se, b_test$crim)
+
+rmse_lasso
+
+```
+
+## 3.6
+
+```{r}
+sprintf("rmse from PCR : %f ", rmse_pcr)
+sprintf("rmse from PLS : %f ", rmse_pls )
+sprintf("rmse from ridge regression with lmbda 1se : %f", rmse_ridge)
+sprintf("rmse from lasso regression with lmbda 1se : %f", rmse_lasso)
+```
+Based on the given results, the PCR and PLS models have very similar test errors. This suggests that both models are able to predict the crime rate with a similar level of accuracy.
+
+On the other hand, the ridge and lasso regression models have slightly higher test errors. This suggests that these models may not be as accurate as the PCR and PLS models in predicting the crime rate.
+
+However, it is important to note that the interpretation of the RMSE values depends on the scale of the response variable. Therefore, without additional context, it is difficult to determine how accurately we can predict the crime rate.
+
+Overall, while there is some difference among the test errors resulting from these approaches, the differences are relatively small, indicating that all four models may be useful for predicting the crime rate to some extent.
+
+
+
+# QUESTION 4
+
+
+```{r }
+
+#weighted least square regression
+
+pipeline
+
+#Fit the regression model
+model1 <- lm(Lab ~ Field, data = pipeline)
+summary(model1)
+residuals <- resid(model1)
+resid_square = residuals^2
+#informal methods to see heteroscedasticity 
+plot(resid_square, pipeline$Field)
+plot(resid_square, fitted(model1))
+#From both the plot, we can clearly see systematic funnel type pattern 
+
+#the question suggests that the variance of the response variable 
+#is related to the predictor variable in a specific way, and we are
+#asked to use this relationship to estimate appropriate weights for WLS. 
+#This suggests that WLS is the appropriate method to use in this case, 
+#as we have specific information about the heteroscedasticity that can be used to derive the weights.
+#In the case, we assume that the variance of the response variable (Lab) is related to the predictor variable (Field) in a specific way:
+#This means that the variance of the response variable is not constant across all levels of the predictor variable. In other words, the spread of the response variable (Lab) changes as the predictor variable (Field) changes, and this is a form of non-constant variance.
+#This non-constant variance violates the assumption of homoscedasticity
+
+
+#To use weighted linear regression to correct for non-constant variance, 
+#we need to compute appropriate weights for each observation.
+#One way to do this is to model the relationship between the variance of the response and
+#the predictor, and use the resulting model to determine the weights. 
+#In this case, we are guessing that the variance in Lab is linked to Field through a power law relationship:
+
+#var(Lab) = a0 * Field^a1
+
+
+
+p <- arrange(pipeline, Field)
+ff <- gl(12,9)[-108] #dividing into 12 groups 
+meanfield <- unlist(lapply(split(p$Field,ff),mean)) #calculates the mean value of Field within each group defined by the variable ff
+#split(npipe$Field, ff) splits the Field column of the npipe dataframe into 12 groups based on the values of the ff variable. Each group is a list of the values of Field that fall within that group.
+#lapply() applies the mean() function to each group of Field values, calculating the mean value of Field within that group.
+#unlist() combines the list of mean values into a single vector.
+varlab <- unlist(lapply(split(p$Lab,ff),var)) #stores variance of the response variable for all 12 groups 
+
+logmeanfield <- log(meanfield[-12]) #removing last group
+logvarlab <- log(varlab[-12])
+fit <- lm(logvarlab ~ logmeanfield) #fitting model
+summary(fit)
+#var(Lab) = a0 * Field^a1
+#after taking log on both sides
+#log(varlab) = loga0 + a1loga0
+#The resulting summary output will provide
+#estimates of the intercept and slope of the regression line,
+#as well as their standard errors and p-values. The intercept corresponds to log(a0), and the slope corresponds to a1
+
+#from summary output,
+#log(a0) = -1.9352
+a0 <- exp(-1.9352)
+a0
+#a0 = 0.144395
+a1 = 1.6707
+
+#since we have values of a1 and a0, we can find weights for weighted least regression 
+##var(Lab) = a0 * Field^a1 
+weights <- a0 * p$Field^a1
+#weighted least regression
+wls <- lm(p$Lab ~ p$Field, data = p, weights = weights)
+summary(wls)
+
+#checking for constant variance after weighted least square
+plot(wls$fitted.values, wls$residuals, xlab = "Fitted values", ylab = "Residuals", main = "Residual plot")
+
+#plott shows a random scatter of points with no discernible pattern, it is an indication that heteroscedasticity has been fixed with the help of weights.
+
+```
